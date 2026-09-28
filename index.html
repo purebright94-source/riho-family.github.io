@@ -27,6 +27,7 @@ header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;
 <div class="field"><label>비밀번호</label><input id="authPassword" type="password"></div>
 <div class="actions">
 <button class="btn" onclick="signUp()">처음 계정 만들기</button>
+<button class="btn" onclick="resetPassword()">비밀번호 재설정</button>
 <button class="btn primary" onclick="signIn()">로그인</button>
 </div>
 <div id="authMsg" class="sub" style="margin-top:10px"></div>
@@ -39,7 +40,7 @@ header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;
 <button class="btn" onclick="openAuth()">계정 로그인</button>
 <button class="btn" onclick="logout()">로그아웃</button>
 <button class="btn" onclick="exportLocalData()">💾 기존 데이터 백업</button>
-<button class="btn" onclick="document.getElementById("importFile").click()">📥 기존 데이터 가져오기</button>
+<button class="btn" onclick="document.getElementById('importFile').click()">📥 기존 데이터 가져오기</button>
 <input id="importFile" type="file" accept=".json" style="display:none" onchange="importLocalData(event)">
 </div>
 <div class="tabs">
@@ -147,6 +148,12 @@ async function signUp(){
  const {error}=await sb.auth.signUp({email,password});
  document.getElementById("authMsg").textContent=error?error.message:"계정 생성 요청 완료. 이메일 확인이 필요할 수 있습니다.";
 }
+async function resetPassword(){
+ const email=document.getElementById("authEmail").value.trim();
+ if(!email)return document.getElementById("authMsg").textContent="먼저 이메일을 입력하세요.";
+ const {error}=await sb.auth.resetPasswordForEmail(email);
+ document.getElementById("authMsg").textContent=error?error.message:"비밀번호 재설정 이메일을 보냈습니다. 메일함의 안내를 따라 새 비밀번호를 설정하세요.";
+}
 async function signIn(){
  const email=document.getElementById("authEmail").value.trim(), password=document.getElementById("authPassword").value;
  const {data,error}=await sb.auth.signInWithPassword({email,password});
@@ -157,39 +164,39 @@ async function logout(){await sb.auth.signOut();onlineUser=null;setSyncStatus("�
 function queueSync(){
  clearTimeout(syncTimer);syncTimer=setTimeout(syncCloud,500);
 }
+function isUuid(v){
+ return typeof v==="string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+function newUuid(){return crypto.randomUUID()}
+
 async function syncCloud(){
  if(!onlineUser)return;
  try{
-  setSyncStatus("☁️ 저장 중…");
-  // Upsert places with stable IDs so linked plans/visits remain connected.
-  const placesPayload=db.places.map(p=>({
-    id:p.id, user_id:onlineUser.id, name:p.name, cat:p.cat, area:p.area||"", address:p.address||"",
-    age:p.age||"", season:p.season||"", weather:p.weather||"", time:p.time||"", cost:p.cost||"",
-    parking:p.parking||"", baby:p.baby||"", link:p.link||"", description:p.desc||""
-  }));
-  if(placesPayload.length){
-    const r=await sb.from("places").upsert(placesPayload,{onConflict:"id"});
-    if(r.error)throw r.error;
-  }
-  // Remove cloud rows no longer present locally, then insert/upsert current plans/visits.
-  const {data:cloudPlans,error:pe}=await sb.from("plans").select("id").eq("user_id",onlineUser.id);
-  if(pe)throw pe;
-  const localPlanIds=new Set(db.plans.map(x=>x.id));
-  for(const p of (cloudPlans||[]))if(!localPlanIds.has(p.id))await sb.from("plans").delete().eq("id",p.id).eq("user_id",onlineUser.id);
-  if(db.plans.length){
-    const r=await sb.from("plans").upsert(db.plans.map(p=>({id:p.id,user_id:onlineUser.id,place_id:p.placeId,date:p.date})),{onConflict:"id"});
-    if(r.error)throw r.error;
-  }
-  const {data:cloudVisits,error:ve}=await sb.from("visits").select("id").eq("user_id",onlineUser.id);
-  if(ve)throw ve;
-  const localVisitIds=new Set(db.visits.map(x=>x.id));
-  for(const v of (cloudVisits||[]))if(!localVisitIds.has(v.id))await sb.from("visits").delete().eq("id",v.id).eq("user_id",onlineUser.id);
-  if(db.visits.length){
-    const r=await sb.from("visits").upsert(db.visits.map(v=>({id:v.id,user_id:onlineUser.id,place_id:v.placeId,date:v.date,reaction:v.reaction,again:v.again,weather:v.weather,memo:v.memo})),{onConflict:"id"});
-    if(r.error)throw r.error;
-  }
-  setSyncStatus("☁️ 저장 완료");
- }catch(e){setSyncStatus("⚠️ 동기화 오류: "+e.message)}
+   setSyncStatus("☁️ 저장 중…");
+   const placeMap={};
+   const localPlaces=db.places.map(p=>({...p}));
+   localPlaces.forEach(p=>{placeMap[p.id]=isUuid(p.id)?p.id:newUuid()});
+   const placesPayload=localPlaces.map(p=>({
+     id:placeMap[p.id], user_id:onlineUser.id, name:p.name, cat:p.cat, area:p.area||"", address:p.address||"",
+     age:p.age||"", season:p.season||"", weather:p.weather||"", time:p.time||"", cost:p.cost||"",
+     parking:p.parking||"", baby:p.baby||"", link:p.link||"", description:p.desc||""
+   }));
+   const planPayload=db.plans.map(p=>({id:isUuid(p.id)?p.id:newUuid(),user_id:onlineUser.id,place_id:placeMap[p.placeId]||p.placeId,date:p.date}));
+   const visitPayload=db.visits.map(v=>({id:isUuid(v.id)?v.id:newUuid(),user_id:onlineUser.id,place_id:placeMap[v.placeId]||v.placeId,date:v.date,reaction:v.reaction||"",again:v.again||"",weather:v.weather||"",memo:v.memo||""}));
+   if(placesPayload.length){const r=await sb.from("places").upsert(placesPayload,{onConflict:"id"});if(r.error)throw r.error;}
+   if(planPayload.length){const r=await sb.from("plans").upsert(planPayload,{onConflict:"id"});if(r.error)throw r.error;}
+   if(visitPayload.length){const r=await sb.from("visits").upsert(visitPayload,{onConflict:"id"});if(r.error)throw r.error;}
+   db.places=localPlaces.map(p=>({...p,id:placeMap[p.id]}));
+   db.plans=db.plans.map((p,i)=>({...p,id:planPayload[i].id,placeId:planPayload[i].place_id}));
+   db.visits=db.visits.map((v,i)=>({...v,id:visitPayload[i].id,placeId:visitPayload[i].place_id}));
+   localStorage.setItem(KEY,JSON.stringify(db));
+   const [cp,cv]=await Promise.all([sb.from("plans").select("id").eq("user_id",onlineUser.id),sb.from("visits").select("id").eq("user_id",onlineUser.id)]);
+   if(cp.error)throw cp.error;if(cv.error)throw cv.error;
+   const localPlanIds=new Set(db.plans.map(x=>x.id)), localVisitIds=new Set(db.visits.map(x=>x.id));
+   for(const p of (cp.data||[]))if(!localPlanIds.has(p.id))await sb.from("plans").delete().eq("id",p.id).eq("user_id",onlineUser.id);
+   for(const v of (cv.data||[]))if(!localVisitIds.has(v.id))await sb.from("visits").delete().eq("id",v.id).eq("user_id",onlineUser.id);
+   setSyncStatus("☁️ 저장 완료");render();renderPlaces();renderVisited();
+  }catch(e){setSyncStatus("⚠️ 동기화 오류: "+e.message)}
 }
 async function pullCloud(){
  if(!onlineUser)return;
