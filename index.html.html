@@ -15,12 +15,33 @@ header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;
 .list{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.place-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;cursor:pointer}.place-card:hover{border-color:#b8cbbd}.place-card h3{margin:7px 0 4px;font-size:17px}.place-card p{margin:3px 0;color:var(--muted);font-size:12px}.badge{display:inline-block;border-radius:99px;padding:5px 8px;font-size:10px;background:#f0eee7;margin-right:4px}.status{font-weight:800;color:var(--green)}.empty{padding:35px;text-align:center;color:var(--muted);background:var(--card);border:1px dashed var(--line);border-radius:18px}
 .overlay{display:none;position:fixed;inset:0;background:#0005;align-items:center;justify-content:center;padding:14px;z-index:20}.overlay.show{display:flex}.modal{background:var(--card);width:min(760px,100%);max-height:92vh;overflow:auto;border-radius:22px;padding:22px}.close{float:right}.modal h2{margin:5px 0 15px}.form{display:grid;grid-template-columns:1fr 1fr;gap:11px}.field.full{grid-column:1/-1}.field label{display:block;font-size:11px;font-weight:800;color:var(--muted);margin-bottom:5px}.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);background:#fffdf9;border-radius:10px;padding:10px;color:var(--text);font:inherit}.field textarea{min-height:80px;resize:vertical}.actions{display:flex;justify-content:space-between;gap:8px;margin-top:17px}.detail-meta{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:14px 0}.detail-meta div{background:#f1eee7;border-radius:11px;padding:10px}.detail-meta b{display:block;font-size:10px;color:var(--muted);margin-bottom:3px}.section{border-top:1px solid var(--line);padding:14px 0}.section h3{font-size:14px;margin:0 0 8px}.visit{background:#edf4ef;border-radius:12px;padding:11px;margin:7px 0}.visit b{font-size:12px}.visit p{margin:4px 0;color:var(--muted);font-size:12px}
 @media(max-width:800px){.hero{grid-template-columns:1fr}.list{grid-template-columns:1fr 1fr}.toolbar{align-items:stretch;flex-direction:column}.search{width:100%}}@media(max-width:560px){.wrap{padding:18px 11px}.title{font-size:26px}.list{grid-template-columns:1fr}.days{grid-auto-rows:minmax(90px,auto)}.day{padding:6px}.event{font-size:9px;padding:5px}.form{grid-template-columns:1fr}.field.full{grid-column:auto}.stats .stat{min-width:0;flex:1}.detail-meta{grid-template-columns:1fr}}
-</style>
+.syncbar{background:var(--green2);border:1px solid #d4e3d8;border-radius:14px;padding:8px 10px;margin-bottom:10px}.syncbar .btn{padding:7px 10px;font-size:12px}</style>
 </head>
 <body>
+<div class="overlay" id="authOverlay"><div class="modal">
+<button class="btn close" onclick="closeAuth()">닫기</button>
+<div style="color:var(--green);font-size:12px;font-weight:800">온라인 동기화</div>
+<h2>컴퓨터 ↔ 갤럭시</h2>
+<p class="sub">같은 Supabase 계정으로 로그인하면 두 기기에서 같은 장소·일정·방문기록을 사용합니다.</p>
+<div class="field"><label>이메일</label><input id="authEmail" type="email"></div>
+<div class="field"><label>비밀번호</label><input id="authPassword" type="password"></div>
+<div class="actions">
+<button class="btn" onclick="signUp()">처음 계정 만들기</button>
+<button class="btn primary" onclick="signIn()">로그인</button>
+</div>
+<div id="authMsg" class="sub" style="margin-top:10px"></div>
+</div></div>
 <div class="wrap">
 <header><div><div class="eyebrow">RIHO OUTING ARCHIVE</div><div class="title">리호 나들이 아카이브</div><div class="sub">찾아둔 장소를 모아두고, 갈 날짜를 정하고, 다녀온 뒤 기록하는 우리 가족 DB</div></div></header>
 
+<div class="syncbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+<span id="syncStatus" class="sub">☁️ 동기화 준비</span>
+<button class="btn" onclick="openAuth()">계정 로그인</button>
+<button class="btn" onclick="logout()">로그아웃</button>
+<button class="btn" onclick="exportLocalData()">💾 기존 데이터 백업</button>
+<button class="btn" onclick="document.getElementById("importFile").click()">📥 기존 데이터 가져오기</button>
+<input id="importFile" type="file" accept=".json" style="display:none" onchange="importLocalData(event)">
+</div>
 <div class="tabs">
 <button class="tab active" data-tab="calendar">📅 나들이 캘린더</button>
 <button class="tab" data-tab="places">🗂️ 장소 리스트</button>
@@ -91,7 +112,17 @@ header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;
 <div class="field full"><label>우리 가족 후기</label><textarea id="vMemo" placeholder="리호가 좋아했던 것, 힘들었던 것, 낮잠, 식사, 다음 준비물 등을 기록"></textarea></div>
 </div><div class="actions"><span></span><button class="btn primary">방문 기록 저장</button></div></form></div></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+/* ===== Supabase 설정 =====
+   아래 두 값만 본인의 Supabase 값으로 교체하세요.
+*/
+const SUPABASE_URL="__SUPABASE_URL__";
+const SUPABASE_PUBLISHABLE_KEY="__SUPABASE_PUBLISHABLE_KEY__";
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+let onlineUser=null;
+let syncTimer=null;
+
 const KEY="riho_archive_v2";
 const catName={festival:"🎪 축제",nature:"🍁 자연",animal:"🐑 동물",indoor:"🏠 실내",play:"🛝 놀이"};
 let db=JSON.parse(localStorage.getItem(KEY)||"null")||{
@@ -103,7 +134,112 @@ places:[
 ],plans:[],visits:[]
 };
 let year=2026,month=9,filter="all",search="",currentPlaceId=null;
-function save(){localStorage.setItem(KEY,JSON.stringify(db))}
+function save(){
+ localStorage.setItem(KEY,JSON.stringify(db));
+ if(onlineUser) queueSync();
+}
+function setSyncStatus(t){const e=document.getElementById("syncStatus");if(e)e.textContent=t}
+function openAuth(){document.getElementById("authOverlay").classList.add("show")}
+function closeAuth(){document.getElementById("authOverlay").classList.remove("show")}
+async function signUp(){
+ const email=document.getElementById("authEmail").value.trim(), password=document.getElementById("authPassword").value;
+ if(!email||!password)return document.getElementById("authMsg").textContent="이메일과 비밀번호를 입력하세요.";
+ const {error}=await sb.auth.signUp({email,password});
+ document.getElementById("authMsg").textContent=error?error.message:"계정 생성 요청 완료. 이메일 확인이 필요할 수 있습니다.";
+}
+async function signIn(){
+ const email=document.getElementById("authEmail").value.trim(), password=document.getElementById("authPassword").value;
+ const {data,error}=await sb.auth.signInWithPassword({email,password});
+ if(error){document.getElementById("authMsg").textContent=error.message;return}
+ onlineUser=data.user; closeAuth(); await pullCloud(); setSyncStatus("☁️ 온라인 동기화됨");
+}
+async function logout(){await sb.auth.signOut();onlineUser=null;setSyncStatus("☁️ 로그아웃됨")}
+function queueSync(){
+ clearTimeout(syncTimer);syncTimer=setTimeout(syncCloud,500);
+}
+async function syncCloud(){
+ if(!onlineUser)return;
+ try{
+  setSyncStatus("☁️ 저장 중…");
+  // Upsert places with stable IDs so linked plans/visits remain connected.
+  const placesPayload=db.places.map(p=>({
+    id:p.id, user_id:onlineUser.id, name:p.name, cat:p.cat, area:p.area||"", address:p.address||"",
+    age:p.age||"", season:p.season||"", weather:p.weather||"", time:p.time||"", cost:p.cost||"",
+    parking:p.parking||"", baby:p.baby||"", link:p.link||"", description:p.desc||""
+  }));
+  if(placesPayload.length){
+    const r=await sb.from("places").upsert(placesPayload,{onConflict:"id"});
+    if(r.error)throw r.error;
+  }
+  // Remove cloud rows no longer present locally, then insert/upsert current plans/visits.
+  const {data:cloudPlans,error:pe}=await sb.from("plans").select("id").eq("user_id",onlineUser.id);
+  if(pe)throw pe;
+  const localPlanIds=new Set(db.plans.map(x=>x.id));
+  for(const p of (cloudPlans||[]))if(!localPlanIds.has(p.id))await sb.from("plans").delete().eq("id",p.id).eq("user_id",onlineUser.id);
+  if(db.plans.length){
+    const r=await sb.from("plans").upsert(db.plans.map(p=>({id:p.id,user_id:onlineUser.id,place_id:p.placeId,date:p.date})),{onConflict:"id"});
+    if(r.error)throw r.error;
+  }
+  const {data:cloudVisits,error:ve}=await sb.from("visits").select("id").eq("user_id",onlineUser.id);
+  if(ve)throw ve;
+  const localVisitIds=new Set(db.visits.map(x=>x.id));
+  for(const v of (cloudVisits||[]))if(!localVisitIds.has(v.id))await sb.from("visits").delete().eq("id",v.id).eq("user_id",onlineUser.id);
+  if(db.visits.length){
+    const r=await sb.from("visits").upsert(db.visits.map(v=>({id:v.id,user_id:onlineUser.id,place_id:v.placeId,date:v.date,reaction:v.reaction,again:v.again,weather:v.weather,memo:v.memo})),{onConflict:"id"});
+    if(r.error)throw r.error;
+  }
+  setSyncStatus("☁️ 저장 완료");
+ }catch(e){setSyncStatus("⚠️ 동기화 오류: "+e.message)}
+}
+async function pullCloud(){
+ if(!onlineUser)return;
+ setSyncStatus("☁️ 불러오는 중…");
+ const [a,b,c]=await Promise.all([
+  sb.from("places").select("*").eq("user_id",onlineUser.id),
+  sb.from("plans").select("*").eq("user_id",onlineUser.id),
+  sb.from("visits").select("*").eq("user_id",onlineUser.id)
+ ]);
+ const err=a.error||b.error||c.error;
+ if(err){setSyncStatus("⚠️ 불러오기 오류: "+err.message);return}
+ // If cloud is empty, keep local data and upload it; otherwise cloud becomes source of truth.
+ if((a.data||[]).length===0 && (b.data||[]).length===0 && (c.data||[]).length===0){
+   await syncCloud(); return;
+ }
+ db.places=(a.data||[]).map(p=>({id:p.id,name:p.name,cat:p.cat,area:p.area,address:p.address,age:p.age,season:p.season,weather:p.weather,time:p.time,cost:p.cost,parking:p.parking,baby:p.baby,link:p.link,desc:p.description||""}));
+ db.plans=(b.data||[]).map(p=>({id:p.id,placeId:p.place_id,date:p.date}));
+ db.visits=(c.data||[]).map(v=>({id:v.id,placeId:v.place_id,date:v.date,reaction:v.reaction,again:v.again,weather:v.weather,memo:v.memo}));
+ localStorage.setItem(KEY,JSON.stringify(db));render();renderPlaces();renderVisited();setSyncStatus("☁️ 최신 데이터");
+}
+async function initOnline(){
+ const {data}=await sb.auth.getSession();
+ if(data.session?.user){onlineUser=data.session.user;await pullCloud()}
+ else setSyncStatus("☁️ 로그인하면 자동 동기화")
+}
+sb.auth.onAuthStateChange((_event,session)=>{onlineUser=session?.user||null});
+function exportLocalData(){
+ const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(db,null,2)],{type:"application/json"}));a.download="리호_나들이_기존데이터_백업.json";a.click();
+}
+async function importLocalData(ev){
+ const f=ev.target.files[0];if(!f)return;
+ try{
+  const d=JSON.parse(await f.text());
+  if(!d.places&&!d.plans&&!d.visits)throw new Error("리호 나들이 데이터 형식이 아닙니다.");
+  if(!confirm("기존 백업 데이터를 현재 데이터에 추가합니다. 계속할까요?"))return;
+  const idMap={};
+  for(const p of (d.places||[])){
+    const np={...p,id:p.id||"p_"+Date.now()+"_"+Math.random().toString(36).slice(2)};
+    if(db.places.some(x=>x.id===np.id))np.id="p_"+Date.now()+"_"+Math.random().toString(36).slice(2);
+    idMap[p.id]=np.id;db.places.push(np);
+  }
+  for(const p of (d.plans||[])){const pid=idMap[p.placeId]||p.placeId;db.plans.push({...p,id:"pl_"+Date.now()+"_"+Math.random().toString(36).slice(2),placeId:pid})}
+  for(const v of (d.visits||[])){const pid=idMap[v.placeId]||v.placeId;db.visits.push({...v,id:"v_"+Date.now()+"_"+Math.random().toString(36).slice(2),placeId:pid})}
+  save();render();renderPlaces();renderVisited();
+  if(onlineUser)await syncCloud();
+  alert("기존 데이터 가져오기가 완료되었습니다.");
+ }catch(e){alert("가져오기 실패: "+e.message)}
+ ev.target.value="";
+}
+
 function esc(s){return String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 function render(){
 document.getElementById("month").textContent=`${year}년 ${month+1}월`;document.getElementById("season").textContent=month===9?"10월, 지금은 가을 나들이 시즌":`${month+1}월, 리호의 계절 나들이`;
@@ -136,5 +272,6 @@ function closeVisit(){document.getElementById("visitOverlay").classList.remove("
 function saveVisit(e){e.preventDefault();db.visits.push({id:"v_"+Date.now(),placeId:document.getElementById("visitPlaceId").value,date:document.getElementById("vDate").value,reaction:document.getElementById("vReaction").value,again:document.getElementById("vAgain").value,weather:document.getElementById("vWeather").value,memo:document.getElementById("vMemo").value});save();closeVisit();render();renderVisited();openDetail(currentPlaceId)}
 function renderVisited(){let box=document.getElementById("visitedList");let ids=[...new Set(db.visits.map(v=>v.placeId))];if(!ids.length){box.innerHTML='<div class="empty" style="grid-column:1/-1">아직 다녀온 곳이 없어요.<br>장소 상세에서 ‘＋ 다녀온 기록 추가’를 눌러보세요.</div>';return}box.innerHTML=ids.map(id=>{let p=getPlace(id),vs=db.visits.filter(v=>v.placeId===id).sort((a,b)=>b.date.localeCompare(a.date));return `<div class="place-card" onclick="openDetail('${id}')"><span class="badge">${catName[p.cat]}</span><h3>${esc(p.name)}</h3><p>📍 ${esc(p.area)}</p><p class="status">❤️ ${vs.length}회 방문 기록</p><p>${esc(vs[0].date)} · ${esc(vs[0].reaction)}</p></div>`}).join("")}
 render();
+initOnline();
 </script>
 </body></html>
