@@ -1,0 +1,11 @@
+{
+  "name": "리호 나들이 아카이브",
+  "short_name": "리호 나들이",
+  "description": "리호 가족의 나들이 장소, 일정, 방문기록을 관리하는 앱",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f6f1",
+  "theme_color": "#5e806e",
+  "lang": "ko-KR"
+}
