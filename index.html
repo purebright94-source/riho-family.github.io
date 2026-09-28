@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="manifest" href="./manifest.webmanifest">
 <title>리호 나들이 아카이브</title>
 <style>
 :root{--bg:#f7f6f1;--card:#fffdf9;--text:#292a27;--muted:#77786f;--line:#e4e0d6;--green:#5e806e;--green2:#e9f1eb;--orange:#f5e5d0;--purple:#ececf5;--brown:#eee5dc;--blue:#e8f0f4}
@@ -280,5 +281,10 @@ function saveVisit(e){e.preventDefault();db.visits.push({id:"v_"+Date.now(),plac
 function renderVisited(){let box=document.getElementById("visitedList");let ids=[...new Set(db.visits.map(v=>v.placeId))];if(!ids.length){box.innerHTML='<div class="empty" style="grid-column:1/-1">아직 다녀온 곳이 없어요.<br>장소 상세에서 ‘＋ 다녀온 기록 추가’를 눌러보세요.</div>';return}box.innerHTML=ids.map(id=>{let p=getPlace(id),vs=db.visits.filter(v=>v.placeId===id).sort((a,b)=>b.date.localeCompare(a.date));return `<div class="place-card" onclick="openDetail('${id}')"><span class="badge">${catName[p.cat]}</span><h3>${esc(p.name)}</h3><p>📍 ${esc(p.area)}</p><p class="status">❤️ ${vs.length}회 방문 기록</p><p>${esc(vs[0].date)} · ${esc(vs[0].reaction)}</p></div>`}).join("")}
 render();
 initOnline();
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js");
+  });
+}
 </script>
 </body></html>
